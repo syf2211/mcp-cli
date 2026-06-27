@@ -40,20 +40,48 @@ export async function readPromptArgumentInputs(args) {
   )
 }
 
-export async function readJSONSchemaInputs(schema) {
-  if (!schema || isEmpty(schema)) {
-    return {}
+function getPromptPropertyKey(path) {
+  if (path === '$' || !path.includes('.properties.')) {
+    return null
   }
+
+  return path
+    .replace(/^\$\.properties\./, '')
+    .replace(/\.properties\./g, '.')
+    .replace(/\.(?:anyOf|oneOf)\[\d+\]/g, '')
+}
+
+function isPropertyRequired(schema, keyPath) {
+  const parts = keyPath.split('.')
+  let current = schema
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    current = current?.properties?.[parts[index]]
+  }
+  return current?.required?.includes(parts.at(-1)) ?? false
+}
+
+export function buildJSONSchemaQuestions(schema) {
+  if (!schema || isEmpty(schema)) {
+    return []
+  }
+
   const questions = []
+  const seenKeys = new Set()
   traverse.default(schema, (s, _isCycle, path, parent) => {
-    const key = path.replace('$.properties.', '').replace('.properties', '')
-    const required = parent?.required?.includes(key.split('.').at(-1))
+    const key = getPromptPropertyKey(path)
+    if (!key || seenKeys.has(key)) {
+      return
+    }
     if (parent && parent.type === 'array') {
       return
     }
+
+    const required = isPropertyRequired(schema, key)
     if (s.type === 'string') {
+      seenKeys.add(key)
       questions.push({ key, type: 'text', required, initial: s.default })
     } else if (s.type === 'integer' || s.type === 'number') {
+      seenKeys.add(key)
       questions.push({
         key,
         type: 'number',
@@ -63,9 +91,18 @@ export async function readJSONSchemaInputs(schema) {
         min: s.minimum ?? s.exclusiveMinimum,
       })
     } else if (s.type === 'boolean') {
+      seenKeys.add(key)
       questions.push({ type: 'confirm', key, required, initial: s.default })
     }
   })
+  return questions
+}
+
+export async function readJSONSchemaInputs(schema) {
+  const questions = buildJSONSchemaQuestions(schema)
+  if (questions.length === 0) {
+    return {}
+  }
   const results = {}
   for (const q of questions) {
     const { key, required, ...options } = q

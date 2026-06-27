@@ -46,3 +46,29 @@ test('buildJSONSchemaQuestions keeps direct scalar properties unchanged', () => 
     ],
   )
 })
+
+test('buildJSONSchemaQuestions prompts for properties with multi-type arrays', () => {
+  const questions = buildJSONSchemaQuestions({
+    type: 'object',
+    properties: {
+      action: {
+        type: 'string',
+        enum: ['store', 'retrieve', 'list', 'delete', 'clear'],
+      },
+      key: { type: 'string' },
+      value: {
+        type: ['object', 'array', 'string', 'number', 'boolean', 'null'],
+      },
+    },
+    required: ['action'],
+  })
+
+  assert.deepEqual(
+    questions.map((question) => [question.key, question.type, question.parseJson]),
+    [
+      ['action', 'text', undefined],
+      ['key', 'text', undefined],
+      ['value', 'text', true],
+    ],
+  )
+})
